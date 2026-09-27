@@ -1,0 +1,7 @@
+{
+  "name": "blogpad",
+  "version": "3.4.0",
+  "description": "Lightweight WYSIWYG editor",
+  "main": "blogpad.js",
+  "license": "MIT"
+}
