@@ -1,17 +1,17 @@
 /* =========================================================
-   BlogPad v4.0 — Fully inline-styled editor
-   All content styles applied as inline CSS. Zero classes
-   on content elements. Fully self-contained HTML output.
+   BlogPad v4.0.1 — Fully inline-styled editor
+   - All content styles applied as inline CSS
+   - TOC uses <div> instead of <ol>/<li> to avoid theme conflicts
+   - Auto-converts legacy <ol>/<li> TOC to <div> on load
    ========================================================= */
 window.BlogPad = (function () {
   'use strict';
-  var VERSION = '4.0.0';
+  var VERSION = '4.0.1';
 
   /* =========================================================
      INLINE STYLE MAP — every content element's style
   ========================================================= */
   var IS = {
-    // Blocks
     h1: 'font-size:2em;line-height:1.25;font-weight:700;margin:.8em 0 .4em;letter-spacing:-.015em;font-family:Georgia,"Times New Roman",serif',
     h2: 'font-size:1.5em;line-height:1.3;font-weight:700;margin:1.1em 0 .4em;letter-spacing:-.01em;font-family:Georgia,"Times New Roman",serif',
     h3: 'font-size:1.22em;line-height:1.4;font-weight:600;margin:1em 0 .35em',
@@ -27,38 +27,34 @@ window.BlogPad = (function () {
     li: 'margin:.22em 0;line-height:1.65',
     hr: 'border:none;border-top:1px solid #e0e0e0;margin:1.8em 0;height:0;background:transparent',
 
-    // Table
     table: 'border-collapse:collapse;width:100%;margin:1.2em 0;font-size:.95em;table-layout:fixed',
     td: 'border:1px solid #c4c4c4;padding:8px 12px;min-width:40px;vertical-align:top;line-height:1.5;word-wrap:break-word;overflow-wrap:break-word',
     th: 'border:1px solid #c4c4c4;padding:8px 12px;min-width:40px;vertical-align:top;line-height:1.5;word-wrap:break-word;overflow-wrap:break-word;background:#f6f6f6;font-weight:600;text-align:left',
 
-    // Image
     img: 'max-width:100%;height:auto;display:inline-block;vertical-align:bottom',
     imgLeft: 'max-width:55%;height:auto;float:left;margin:4px 20px 12px 0;display:inline-block;vertical-align:bottom',
     imgRight: 'max-width:55%;height:auto;float:right;margin:4px 0 12px 20px;display:inline-block;vertical-align:bottom',
     imgCenter: 'max-width:100%;height:auto;display:block;margin:12px auto',
     imgFull: 'max-width:100%;height:auto;display:block;width:100%;margin:14px 0',
 
-    // Figure
     figure: 'margin:1.4em 0;text-align:center',
     figcaption: 'font-size:.85em;color:#9a9a9a;margin-top:8px;font-style:italic;line-height:1.5',
 
-    // Blog blocks
     callout: 'background:#e8f0fe;border-left:3px solid #1a73e8;padding:12px 16px;border-radius:0 4px 4px 0;margin:1.2em 0;color:#174ea6;font-size:.97em;line-height:1.65',
     calloutStrong: 'color:#1a73e8;font-weight:700',
     takeaway: 'background:#e6f4ea;border:1px solid #a8dab5;border-left:3px solid #34a853;border-radius:0 4px 4px 0;padding:12px 16px;margin:1.2em 0;font-size:.97em;line-height:1.65',
     takeawayStrong: 'color:#0d652d;display:block;margin-bottom:6px;font-size:.85em;letter-spacing:.05em;text-transform:uppercase;font-weight:700',
     toc: 'background:#f8f9fa;border:1px solid #e0e0e0;border-radius:4px;padding:14px 18px;margin:1.3em 0',
     tocStrong: 'font-size:.85em;color:#6b6b6b;text-transform:uppercase;letter-spacing:.06em;font-weight:700;display:block;margin-bottom:8px',
-    tocOl: 'margin:0;padding-left:0;list-style:none;counter-reset:none',
-    tocLi: 'margin:3px 0;font-size:.94em;line-height:1.5;padding-left:0',
+    tocList: 'margin:0;padding-left:0;list-style:none;list-style-type:none;counter-reset:none;display:block',
+    tocOl: 'margin:0;padding-left:0;list-style:none;list-style-type:none;counter-reset:none',
+    tocLi: 'margin:3px 0;font-size:.94em;line-height:1.5;padding-left:0;list-style:none;list-style-type:none;display:block',
     tocLink: 'color:#1a73e8;text-decoration:none',
     divider: 'text-align:center;margin:2.6em 0;color:#9a9a9a;font-size:14px;line-height:1;user-select:none'
   };
 
   /* =========================================================
-     UI CSS (toolbar, menus, modals, floating — NOT content)
-     All scoped with .bpad- prefix + unique IDs
+     UI CSS
   ========================================================= */
   var CSS = `
   .bpad-root{--bpad-border:#c4c4c4;--bpad-border-light:#e0e0e0;--bpad-toolbar-bg:#fafafa;
@@ -239,7 +235,7 @@ window.BlogPad = (function () {
     document.head.appendChild(st);
   }
 
-  /* Icons — same as before */
+  /* Icons */
   var I = {
     undo:'<svg viewBox="0 0 24 24"><path d="M8 5L3 9l5 4V5z"/><path d="M3 9h11a5 5 0 0 1 5 5v1a4 4 0 0 1-4 4h-1"/></svg>',
     redo:'<svg viewBox="0 0 24 24"><path d="M16 5l5 4-5 4V5z"/><path d="M21 9H10a5 5 0 0 0-5 5v1a4 4 0 0 0 4 4h1"/></svg>',
@@ -323,14 +319,11 @@ window.BlogPad = (function () {
   }
 
   /* =========================================================
-     STYLE INLINING — the core new logic
+     STYLE INLINING
   ========================================================= */
-
-  // Merge style string with existing style (existing wins for conflicts)
   function mergeStyle(el, newStyle) {
     if (!el || !newStyle) return;
     var existing = el.getAttribute('style') || '';
-    // Parse existing into map
     var map = {};
     existing.split(';').forEach(function (rule) {
       var i = rule.indexOf(':');
@@ -340,20 +333,18 @@ window.BlogPad = (function () {
         if (k && v) map[k] = v;
       }
     });
-    // Parse new style
     newStyle.split(';').forEach(function (rule) {
       var i = rule.indexOf(':');
       if (i > 0) {
         var k = rule.slice(0, i).trim().toLowerCase();
         var v = rule.slice(i + 1).trim();
-        if (k && v && !(k in map)) map[k] = v;   // don't override existing
+        if (k && v && !(k in map)) map[k] = v;
       }
     });
     var merged = Object.keys(map).map(function (k) { return k + ':' + map[k]; }).join(';');
     el.setAttribute('style', merged);
   }
 
-  // Apply style to a single element based on its tag (only if not already marked)
   function styleElement(el) {
     if (!el || el.nodeType !== 1) return;
     var tag = el.tagName.toLowerCase();
@@ -365,22 +356,16 @@ window.BlogPad = (function () {
       figure: IS.figure, figcaption: IS.figcaption
     };
     if (map[tag]) mergeStyle(el, map[tag]);
-    // Code — special case
     if (tag === 'code') {
-      if (el.parentElement && el.parentElement.tagName === 'PRE') {
-        mergeStyle(el, IS.preCode);
-      } else {
-        mergeStyle(el, IS.code);
-      }
+      if (el.parentElement && el.parentElement.tagName === 'PRE') mergeStyle(el, IS.preCode);
+      else mergeStyle(el, IS.code);
     }
-    // Image
     if (tag === 'img') {
       var align = el.getAttribute('data-bp-align') || 'center';
       var styleMap = { left: IS.imgLeft, right: IS.imgRight, center: IS.imgCenter, full: IS.imgFull };
       mergeStyle(el, styleMap[align] || IS.img);
-      el.removeAttribute('class'); // remove any legacy class
+      el.removeAttribute('class');
     }
-    // Callout / takeaway blocks (identified by data-bp-block)
     if (el.hasAttribute && el.hasAttribute('data-bp-block')) {
       var type = el.getAttribute('data-bp-block');
       if (type === 'callout') mergeStyle(el, IS.callout);
@@ -388,7 +373,6 @@ window.BlogPad = (function () {
       else if (type === 'toc') mergeStyle(el, IS.toc);
       else if (type === 'divider') mergeStyle(el, IS.divider);
     }
-    // Strong inside callout/takeaway
     if (tag === 'strong') {
       var parent = el.parentElement;
       if (parent && parent.hasAttribute && parent.hasAttribute('data-bp-block')) {
@@ -397,16 +381,35 @@ window.BlogPad = (function () {
         if (pt === 'takeaway') mergeStyle(el, IS.takeawayStrong);
       }
     }
-    // TOC internals
+    // TOC internals — convert legacy <ol>/<li> to <div>, apply styles
     if (el.hasAttribute && el.hasAttribute('data-bp-block') && el.getAttribute('data-bp-block') === 'toc') {
       el.querySelectorAll('strong').forEach(function (s) { mergeStyle(s, IS.tocStrong); });
-      el.querySelectorAll('ol').forEach(function (o) { mergeStyle(o, IS.tocOl); });
-      el.querySelectorAll('li').forEach(function (l) { mergeStyle(l, IS.tocLi); });
+      // Convert legacy <ol> → <div>
+      el.querySelectorAll('ol').forEach(function (o) {
+        var div = document.createElement('div');
+        div.setAttribute('style', IS.tocList);
+        while (o.firstChild) div.appendChild(o.firstChild);
+        o.replaceWith(div);
+      });
+      // Convert legacy <li> → <div>
+      el.querySelectorAll('li').forEach(function (l) {
+        var div = document.createElement('div');
+        var m = (l.getAttribute('style') || '').match(/margin-left:\s*[^;]+/);
+        div.setAttribute('style', IS.tocLi + (m ? ';' + m[0] : ''));
+        while (l.firstChild) div.appendChild(l.firstChild);
+        l.replaceWith(div);
+      });
+      // Style remaining <ul> (unlikely) 
+      el.querySelectorAll('ul').forEach(function (u) {
+        var div = document.createElement('div');
+        div.setAttribute('style', IS.tocList);
+        while (u.firstChild) div.appendChild(u.firstChild);
+        u.replaceWith(div);
+      });
       el.querySelectorAll('a').forEach(function (aa) { mergeStyle(aa, IS.tocLink); });
     }
   }
 
-  // Walk entire content and apply inline styles
   function applyInlineStyles(root) {
     if (!root) return;
     var tags = ['h1','h2','h3','h4','p','blockquote','pre','code','a','ul','ol','li','hr','table','td','th','figure','figcaption','img','strong','div'];
@@ -415,8 +418,7 @@ window.BlogPad = (function () {
     });
   }
 
-  // Post-process newly created blocks (blockquote, pre, etc. from formatBlock)
-  function styleCurrentBlock() {
+  function styleCurrentBlock(editor) {
     var sel = window.getSelection();
     if (!sel.rangeCount) return;
     var node = sel.anchorNode;
@@ -453,7 +455,6 @@ window.BlogPad = (function () {
     var isTextarea = el.tagName === 'TEXTAREA';
     var startContent = isTextarea ? (el.value || opts.initialContent) : (el.innerHTML || opts.initialContent);
 
-    /* Build DOM */
     var root = document.createElement('div');
     root.className = 'bpad-root';
     root.id = 'bpad-' + Math.random().toString(36).slice(2, 9);
@@ -543,7 +544,6 @@ window.BlogPad = (function () {
       root.appendChild(footer);
     }
 
-    /* Menus */
     var blockMenu = document.createElement('div');
     blockMenu.className = 'bpad-menu';
     blockMenu.setAttribute('data-role', 'block-menu');
@@ -630,7 +630,6 @@ window.BlogPad = (function () {
       '<div class="bpad-color-custom"><input type="color" data-role="hilite-custom" value="#ffff00"><span>Custom</span></div>';
     root.appendChild(hiliteMenu);
 
-    /* Floating toolbars */
     var imgFb = document.createElement('div');
     imgFb.className = 'bpad-float';
     imgFb.setAttribute('data-role', 'img-toolbar');
@@ -768,16 +767,14 @@ window.BlogPad = (function () {
     function exec(cmd, val) {
       focusEditor(); restoreSel();
       try { document.execCommand(cmd, false, val === undefined ? null : val); } catch (e) {}
-      // Post-process: apply inline styles to newly created elements
       if (cmd === 'formatBlock' || cmd === 'insertUnorderedList' || cmd === 'insertOrderedList') {
-        setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(); }, 0);
+        setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(editor); }, 0);
       }
       saveSel(); updateToolbarState(); updateCounts(); updatePlaceholder(); scheduleSave();
     }
     function insertHTML(html) {
       focusEditor(); restoreSel();
       document.execCommand('insertHTML', false, html);
-      // Apply inline styles immediately to newly inserted content
       setTimeout(function () { applyInlineStyles(editor); }, 0);
       saveSel(); prepImgs(); updateCounts(); updatePlaceholder(); scheduleSave();
     }
@@ -840,7 +837,6 @@ window.BlogPad = (function () {
       if (e.target === modalBackdrop) closeModalWith(null);
     });
 
-    /* Link modal */
     function openLinkModal() {
       restoreSel();
       var sel = window.getSelection();
@@ -911,7 +907,6 @@ window.BlogPad = (function () {
       });
     }
 
-    /* Table modal */
     function openTableModal() {
       var bodyHTML =
         '<div class="bpad-field">' +
@@ -951,7 +946,6 @@ window.BlogPad = (function () {
           if (val !== 'submit') return;
           var r = Math.max(1, Math.min(50, parseInt(body.querySelector('[data-field="rows"]').value, 10) || 3));
           var c = Math.max(1, Math.min(20, parseInt(body.querySelector('[data-field="cols"]').value, 10) || 3));
-          // Build table with INLINE styles directly
           var html = '<table style="' + IS.table + '"><tbody>';
           for (var i = 0; i < r; i++) {
             html += '<tr style="vertical-align:top">';
@@ -968,7 +962,6 @@ window.BlogPad = (function () {
       });
     }
 
-    /* Alt text modal */
     function openAltModal(img) {
       var currentAlt = img.getAttribute('alt') || '';
       openModal({
@@ -991,7 +984,6 @@ window.BlogPad = (function () {
       });
     }
 
-    /* Menu positioning */
     function positionFixed(menu, trigger) {
       menu.style.left = '0px'; menu.style.top = '-9999px';
       var mr = menu.getBoundingClientRect();
@@ -1022,7 +1014,7 @@ window.BlogPad = (function () {
       openMenuRef = menu;
     }
 
-    /* Event binding — mousedown for focus, click for actions */
+    /* Event binding */
     toolbar.querySelectorAll('button').forEach(function (b) {
       b.addEventListener('mousedown', function (e) { if (e.button === 0) e.preventDefault(); });
       b.addEventListener('pointerdown', function (e) { if (e.pointerType === 'touch') e.stopPropagation(); });
@@ -1046,7 +1038,6 @@ window.BlogPad = (function () {
       });
     }
 
-    /* Inline commands */
     toolbar.querySelectorAll('[data-cmd]').forEach(function (btn) {
       onClick(btn, function () { exec(btn.dataset.cmd); });
     });
@@ -1060,11 +1051,9 @@ window.BlogPad = (function () {
       if (!s.rangeCount || !editor.contains(s.anchorNode)) { restoreSel(); s = window.getSelection(); }
       if (!s.rangeCount || !editor.contains(s.anchorNode)) { toast('Click inside editor first', 'warning'); return; }
       var r = s.getRangeAt(0);
-      // Remove inline formatting
       document.execCommand('removeFormat');
       document.execCommand('unlink');
       document.execCommand('formatBlock', false, '<p>');
-      // Remove style attributes from selection's ancestors
       try {
         var container = r.commonAncestorContainer;
         if (container.nodeType === 3) container = container.parentNode;
@@ -1077,8 +1066,7 @@ window.BlogPad = (function () {
           container = container.parentNode;
         }
       } catch (e) {}
-      // Re-apply fresh styles to the current block
-      setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(); }, 0);
+      setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(editor); }, 0);
       saveSel(); updateToolbarState(); updateCounts(); scheduleSave();
       toast('Formatting cleared');
     });
@@ -1124,7 +1112,6 @@ window.BlogPad = (function () {
       saveSel(); updateCounts(); scheduleSave(); toast('Code applied');
     });
 
-    /* Block menu */
     var blockToggle = toolbar.querySelector('[data-role="block-toggle"]');
     var blockLabel = toolbar.querySelector('[data-role="block-label"]');
     onClick(blockToggle, function () {
@@ -1138,11 +1125,10 @@ window.BlogPad = (function () {
         var labelMap = { p:'Paragraph', h1:'Heading 1', h2:'Heading 2', h3:'Heading 3', h4:'Heading 4', blockquote:'Quote', pre:'Code block' };
         blockLabel.textContent = labelMap[tag] || 'Paragraph';
         exec('formatBlock', '<' + tag + '>');
-        setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(); }, 0);
+        setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(editor); }, 0);
       });
     });
 
-    /* Font menu */
     var fontToggle = toolbar.querySelector('[data-role="font-toggle"]');
     var fontLabel = toolbar.querySelector('[data-role="font-label"]');
     onClick(fontToggle, function () {
@@ -1158,7 +1144,6 @@ window.BlogPad = (function () {
       });
     });
 
-    /* Size menu */
     var sizeToggle = toolbar.querySelector('[data-role="size-toggle"]');
     var sizeLabel = toolbar.querySelector('[data-role="size-label"]');
     onClick(sizeToggle, function () {
@@ -1180,7 +1165,6 @@ window.BlogPad = (function () {
           document.execCommand('fontSize', false, '7');
           document.execCommand('styleWithCSS', false, true);
         } catch (e) {}
-        // Replace font[size=7] with span inline style
         editor.querySelectorAll('font[size="7"]').forEach(function (fe) {
           var sp = document.createElement('span');
           sp.style.fontSize = size;
@@ -1191,7 +1175,6 @@ window.BlogPad = (function () {
       });
     });
 
-    /* Align menu */
     var alignToggle = toolbar.querySelector('[data-role="align-toggle"]');
     var alignIcon = toolbar.querySelector('[data-role="align-icon"]');
     onClick(alignToggle, function () {
@@ -1212,7 +1195,6 @@ window.BlogPad = (function () {
       });
     });
 
-    /* Insert menu */
     var insertToggle = toolbar.querySelector('[data-role="insert-toggle"]');
     onClick(insertToggle, function () {
       if (insertMenu.getAttribute('data-open') === 'true') closeAllMenus();
@@ -1225,7 +1207,6 @@ window.BlogPad = (function () {
       });
     });
 
-    /* Color splits */
     var foreSplit = toolbar.querySelector('[data-role="fore-split"]');
     var foreBar = toolbar.querySelector('[data-role="fore-bar"]');
     var hiliteSplit = toolbar.querySelector('[data-role="hilite-split"]');
@@ -1291,10 +1272,8 @@ window.BlogPad = (function () {
     window.addEventListener('scroll', function () { if (openMenuRef) closeAllMenus(); }, true);
     window.addEventListener('resize', function () { if (openMenuRef) closeAllMenus(); });
 
-    /* Link */
     onClick(toolbar.querySelector('[data-role="link"]'), openLinkModal);
 
-    /* Image */
     function readFile(f) {
       return new Promise(function (res, rej) {
         var r = new FileReader();
@@ -1325,10 +1304,8 @@ window.BlogPad = (function () {
       });
     });
 
-    /* Table */
     onClick(toolbar.querySelector('[data-role="table"]'), openTableModal);
 
-    /* Insert block templates — ALL INLINE STYLES */
     function insertBlock(type) {
       switch (type) {
         case 'callout':
@@ -1343,27 +1320,28 @@ window.BlogPad = (function () {
         case 'toc': insertTOC(); break;
       }
     }
+
+    /* ★ FIXED: TOC uses <div> instead of <ol>/<li> */
     function insertTOC() {
       var heads = [].slice.call(editor.querySelectorAll('h1,h2,h3,h4'));
       if (!heads.length) { toast('Add headings first', 'warning'); return; }
       var html = '<div data-bp-block="toc" style="' + IS.toc + '">' +
                  '<strong style="' + IS.tocStrong + '">Table of Contents</strong>' +
-                 '<ol style="' + IS.tocOl + '">';
+                 '<div style="' + IS.tocList + '">';
       heads.forEach(function (h, i) {
         var id = h.id || slugId(h.textContent, i);
         h.id = id;
         var indent = h.tagName === 'H2' ? '16px' : h.tagName === 'H3' ? '32px' : h.tagName === 'H4' ? '48px' : '0';
-        html += '<li style="' + IS.tocLi + 'margin-left:' + indent + '">' +
+        html += '<div style="' + IS.tocLi + 'margin-left:' + indent + '">' +
                 '<a href="#' + id + '" style="' + IS.tocLink + '">' +
                 (i + 1) + '. ' + esc((h.textContent || '').trim() || 'Untitled') +
-                '</a></li>';
+                '</a></div>';
       });
-      html += '</ol></div><p style="' + IS.p + '"><br></p>';
+      html += '</div></div><p style="' + IS.p + '"><br></p>';
       insertHTML(html);
       toast('Table of contents added');
     }
 
-    /* Toolbar state */
     var STATECMDS = ['bold','italic','underline','strikeThrough','superscript','subscript','justifyLeft','justifyCenter','justifyRight','justifyFull','insertUnorderedList','insertOrderedList'];
     function updateToolbarState() {
       var s = window.getSelection();
@@ -1400,12 +1378,10 @@ window.BlogPad = (function () {
     }
     function prepImgs() { editor.querySelectorAll('img').forEach(function (i) { i.draggable = true; }); }
 
-    /* Image select / resize */
     function selectImg(img) {
       if (selectedImg) selectedImg.removeAttribute('data-bp-selected');
       selectedImg = img;
       img.setAttribute('data-bp-selected', '1');
-      // Highlight via outline (add to inline style temporarily)
       var existing = img.getAttribute('style') || '';
       if (existing.indexOf('outline:') === -1) {
         img.setAttribute('style', existing + ';outline:2px solid #1a73e8;outline-offset:2px');
@@ -1417,7 +1393,6 @@ window.BlogPad = (function () {
     function deselectImg() {
       if (selectedImg) {
         var existing = selectedImg.getAttribute('style') || '';
-        existing = existing.replace(/;?outline:2px solid #1a73e8;?outline-offset:2px;?/g, '');
         existing = existing.replace(/;?outline[^;]*;?/g, '');
         selectedImg.setAttribute('style', existing);
         selectedImg.removeAttribute('data-bp-selected');
@@ -1504,7 +1479,6 @@ window.BlogPad = (function () {
         if (!selectedImg) return;
         var act = btn.dataset.img;
         var img = selectedImg;
-        // Remove outline temporarily
         var hadOutline = img.getAttribute('data-bp-selected');
         switch (act) {
           case 'left':   img.setAttribute('data-bp-align', 'left');   mergeStyle(img, IS.imgLeft);   img.style.float = 'left'; break;
@@ -1523,7 +1497,6 @@ window.BlogPad = (function () {
             deselectImg(); img.remove();
             updateCounts(); updatePlaceholder(); scheduleSave(); toast('Image deleted'); return;
         }
-        // Re-apply outline if still selected
         if (hadOutline && img === selectedImg) {
           var s = img.getAttribute('style') || '';
           if (s.indexOf('outline:') === -1) img.setAttribute('style', s + ';outline:2px solid #1a73e8;outline-offset:2px');
@@ -1562,7 +1535,6 @@ window.BlogPad = (function () {
       });
     });
 
-    /* Image drag */
     editor.addEventListener('pointerdown', function (e) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       var img = e.target.closest && e.target.closest('img');
@@ -1666,7 +1638,6 @@ window.BlogPad = (function () {
     }
     function hideCaret() { caret.style.display = 'none'; }
 
-    /* Table controls */
     function getCell() {
       var s = window.getSelection();
       if (!s.rangeCount) return null;
@@ -1821,7 +1792,6 @@ window.BlogPad = (function () {
       toast('Cell split');
     }
 
-    /* Source mode */
     var sourceBtn = toolbar.querySelector('[data-role="source"]');
     function enterSourceMode() {
       source.value = editor.innerHTML;
@@ -1842,7 +1812,6 @@ window.BlogPad = (function () {
       else enterSourceMode();
     });
 
-    /* Fullscreen */
     var fullscreenBtn = toolbar.querySelector('[data-role="fullscreen"]');
     function toggleFullscreen() {
       isFullscreen = !isFullscreen;
@@ -1861,7 +1830,6 @@ window.BlogPad = (function () {
     }
     onClick(fullscreenBtn, toggleFullscreen);
 
-    /* Save */
     function scheduleSave() {
       clearTimeout(autosaveTimer);
       autosaveTimer = setTimeout(doSave, 1000);
@@ -1885,9 +1853,7 @@ window.BlogPad = (function () {
       } catch (e) {}
     }
 
-    /* Editor events */
     editor.addEventListener('input', function () {
-      // Re-apply styles (only to new elements without data-bp-styled marker)
       applyInlineStyles(editor);
       updateCounts(); updatePlaceholder(); prepImgs(); scheduleSave();
     });
@@ -1910,32 +1876,25 @@ window.BlogPad = (function () {
         var doc = new DOMParser().parseFromString(html, 'text/html');
         doc.querySelectorAll('script,style,meta,link,title,iframe,object,embed,form,input,button')
           .forEach(function (n) { n.remove(); });
-        // Strip ALL classes and IDs from pasted content (avoid conflicts)
         doc.querySelectorAll('*').forEach(function (el) {
           el.removeAttribute('class');
           el.removeAttribute('id');
-          // Keep only safe attributes
-          ['data-bp-block','data-bp-align','href','src','alt','title','colspan','rowspan','width','height'].forEach(function (keep) {
-            // keep them
-          });
         });
         insertHTML(doc.body.innerHTML);
       } else {
         document.execCommand('insertText', false, text);
         updateCounts(); updatePlaceholder(); scheduleSave();
       }
-      // Ensure styles applied
       setTimeout(function () { applyInlineStyles(editor); }, 0);
     });
 
-    /* Keyboard shortcuts */
     document.addEventListener('keydown', function (e) {
       if (modalState) return;
       if ((e.ctrlKey || e.metaKey) && e.altKey) {
         if (e.key >= '1' && e.key <= '4') {
           e.preventDefault();
           exec('formatBlock', '<h' + e.key + '>');
-          setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(); }, 0);
+          setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(editor); }, 0);
           var labelMap = { '1':'Heading 1', '2':'Heading 2', '3':'Heading 3', '4':'Heading 4' };
           blockLabel.textContent = labelMap[e.key];
           return;
@@ -1943,7 +1902,7 @@ window.BlogPad = (function () {
         if (e.key === '0') {
           e.preventDefault();
           exec('formatBlock', '<p>');
-          setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(); }, 0);
+          setTimeout(function () { applyInlineStyles(editor); styleCurrentBlock(editor); }, 0);
           blockLabel.textContent = 'Paragraph';
           return;
         }
@@ -1975,13 +1934,11 @@ window.BlogPad = (function () {
     window.addEventListener('resize', repositionAll);
     editorWrap.addEventListener('scroll', repositionAll, true);
 
-    /* Boot */
     try {
       document.execCommand('styleWithCSS', false, true);
       document.execCommand('defaultParagraphSeparator', false, 'p');
     } catch (e) {}
 
-    // Apply inline styles to any existing content
     applyInlineStyles(editor);
     prepImgs(); updateCounts(); updatePlaceholder();
 
